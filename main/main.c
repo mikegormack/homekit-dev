@@ -69,7 +69,7 @@ static const char *TAG = "example";
 #define EXAMPLE_LVGL_TICK_PERIOD_MS    2
 
 #define TOUCH_RES_IO                    26
-#define TOUCH_INT_IO                    -1//35
+#define TOUCH_INT_IO                    -1//13
 
 #define I2C_MASTER_SCL_IO               12                          /*!< GPIO number used for I2C master clock */
 #define I2C_MASTER_SDA_IO               14                           /*!< GPIO number used for I2C master data  */
@@ -154,6 +154,8 @@ static void example_lvgl_port_update_callback(lv_disp_drv_t *drv)
 #if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
 static void example_lvgl_touch_cb(lv_indev_drv_t * drv, lv_indev_data_t * data)
 {
+
+
     uint16_t touchpad_x[1] = {0};
     uint16_t touchpad_y[1] = {0};
     uint8_t touchpad_cnt = 0;
@@ -168,6 +170,9 @@ static void example_lvgl_touch_cb(lv_indev_drv_t * drv, lv_indev_data_t * data)
         data->point.x = touchpad_x[0];
         data->point.y = touchpad_y[0];
         data->state = LV_INDEV_STATE_PRESSED;
+
+        ESP_LOGI(TAG, "Touch x = %d, y = %d", data->point.x, data->point.y);
+
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
@@ -270,6 +275,7 @@ void app_main(void)
         .y_max = EXAMPLE_LCD_V_RES,
         .levels = {
             .reset = 0,
+            .interrupt = 0
         },
         .rst_gpio_num = TOUCH_RES_IO,
         .int_gpio_num = TOUCH_INT_IO,
@@ -296,7 +302,8 @@ void app_main(void)
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_FT6236_CONFIG();
     esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)TOUCH_HOST, &tp_io_config, &tp_io_handle);
     ESP_LOGI(TAG, "Add FT6236");
-    esp_lcd_touch_new_i2c_ft6236(tp_io_handle, &tp_cfg, &tp);
+    esp_err_t res = esp_lcd_touch_new_i2c_ft6236(tp_io_handle, &tp_cfg, &tp);
+     ESP_LOGI(TAG, "Add FT6236 Res %d", res);
 #endif // CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_FT6236
 
 #endif // CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
@@ -336,14 +343,14 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000));
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
-   /* static lv_indev_drv_t indev_drv;    // Input device driver (Touch)
+    static lv_indev_drv_t indev_drv;    // Input device driver (Touch)
     lv_indev_drv_init(&indev_drv);
     indev_drv.type = LV_INDEV_TYPE_POINTER;
     indev_drv.disp = disp;
     indev_drv.read_cb = example_lvgl_touch_cb;
     indev_drv.user_data = tp;
 
-    lv_indev_drv_register(&indev_drv);*/
+    lv_indev_drv_register(&indev_drv);
 #endif
 
     ESP_LOGI(TAG, "Display LVGL Meter Widget");
