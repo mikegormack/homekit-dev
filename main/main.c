@@ -17,6 +17,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "lvgl.h"
+#include "freertos/semphr.h"
 
 #include "hal/i2c_types.h"
 
@@ -69,14 +70,16 @@ static const char *TAG = "example";
 #define EXAMPLE_LVGL_TICK_PERIOD_MS    2
 
 #define TOUCH_RES_IO                    26
-#define TOUCH_INT_IO                    -1//13
+#define TOUCH_INT_IO                    35
 
-#define I2C_MASTER_SCL_IO               12                          /*!< GPIO number used for I2C master clock */
-#define I2C_MASTER_SDA_IO               14                           /*!< GPIO number used for I2C master data  */
+#define I2C_MASTER_SCL_IO               27                          /*!< GPIO number used for I2C master clock */
+#define I2C_MASTER_SDA_IO               25                           /*!< GPIO number used for I2C master data  */
 #define I2C_MASTER_FREQ_HZ              400000                     /*!< I2C master clock frequency */
 #define I2C_MASTER_TX_BUF_DISABLE       0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE       0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_TIMEOUT_MS           1000
+
+#define ARRAY_SIZE(x)                   (sizeof(x)/sizeof(x[0]))
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
 esp_lcd_touch_handle_t tp = NULL;
@@ -101,6 +104,13 @@ static void example_lvgl_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_
     // copy a buffer's content to a specific area of the display
     esp_lcd_panel_draw_bitmap(panel_handle, offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_map);
 }
+
+#if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
+static void tp_interrupt_handler(esp_lcd_touch_handle_t tp)
+{
+
+}
+#endif
 
 /* Rotate display and touch, when rotated screen in LVGL. Called when driver parameters are updated. */
 static void example_lvgl_port_update_callback(lv_disp_drv_t *drv)
@@ -154,24 +164,28 @@ static void example_lvgl_port_update_callback(lv_disp_drv_t *drv)
 #if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
 static void example_lvgl_touch_cb(lv_indev_drv_t * drv, lv_indev_data_t * data)
 {
-
-
-    uint16_t touchpad_x[1] = {0};
-    uint16_t touchpad_y[1] = {0};
+    uint16_t touchpad_x[2] = {0};
+    uint16_t touchpad_y[2] = {0};
+    uint16_t touchpad_strength[2] = {0};
     uint8_t touchpad_cnt = 0;
 
     /* Read touch controller data */
     esp_lcd_touch_read_data(drv->user_data);
 
     /* Get coordinates */
-    bool touchpad_pressed = esp_lcd_touch_get_coordinates(drv->user_data, touchpad_x, touchpad_y, NULL, &touchpad_cnt, 1);
+    bool touchpad_pressed = esp_lcd_touch_get_coordinates(drv->user_data, touchpad_x, touchpad_y, touchpad_strength, &touchpad_cnt, ARRAY_SIZE(touchpad_x));
 
     if (touchpad_pressed && touchpad_cnt > 0) {
         data->point.x = touchpad_x[0];
         data->point.y = touchpad_y[0];
         data->state = LV_INDEV_STATE_PRESSED;
 
-        ESP_LOGI(TAG, "Touch x = %d, y = %d", data->point.x, data->point.y);
+		ESP_LOGI(TAG, "Touch Num %d", touchpad_cnt);
+
+		for (size_t i = 0; i < touchpad_cnt; i++)
+		{
+            ESP_LOGI(TAG, "Touch %d x = %d, y = %d, w = %d", i+1, touchpad_x[i], touchpad_x[i], touchpad_strength[i]);
+		}
 
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
@@ -284,6 +298,7 @@ void app_main(void)
             .mirror_x = 0,
             .mirror_y = 0,
         },
+        .interrupt_callback = tp_interrupt_handler
     };
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610

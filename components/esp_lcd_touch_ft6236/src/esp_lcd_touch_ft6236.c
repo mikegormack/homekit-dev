@@ -133,7 +133,8 @@ esp_err_t esp_lcd_touch_new_i2c_ft6236(const esp_lcd_panel_io_handle_t io, const
 
         /* Register interrupt callback */
         if (esp_lcd_touch_ft6236->config.interrupt_callback) {
-            esp_lcd_touch_register_interrupt_callback(esp_lcd_touch_ft6236, esp_lcd_touch_ft6236->config.interrupt_callback);
+            esp_err_t err = esp_lcd_touch_register_interrupt_callback(esp_lcd_touch_ft6236, esp_lcd_touch_ft6236->config.interrupt_callback);
+            ESP_LOGI(TAG, "Interrupt reg = %d", err);
         }
     }
 
@@ -180,7 +181,7 @@ static esp_err_t esp_lcd_touch_ft6236_read_data(esp_lcd_touch_handle_t tp)
     err = touch_ft6236_i2c_read(tp, FT6236_TOUCH_POINTS, &points, 1);
     ESP_RETURN_ON_ERROR(err, TAG, "I2C read error!");
 
-    if (points > 5 || points == 0) {
+    if (points > FT6236_TOUCH_POINTS || points == 0) {
         return ESP_OK;
     }
 
@@ -199,6 +200,7 @@ static esp_err_t esp_lcd_touch_ft6236_read_data(esp_lcd_touch_handle_t tp)
     for (i = 0; i < points; i++) {
         tp->data.coords[i].x = (((uint16_t)data[(i * 6) + 0] & 0x0f) << 8) + data[(i * 6) + 1];
         tp->data.coords[i].y = (((uint16_t)data[(i * 6) + 2] & 0x0f) << 8) + data[(i * 6) + 3];
+        tp->data.coords[i].strength = data[(i * 6) + 4];
     }
 
     portEXIT_CRITICAL(&tp->data.lock);
@@ -289,18 +291,6 @@ static esp_err_t touch_ft6236_init(esp_lcd_touch_handle_t tp)
 	#endif
     // Valid touching detect threshold
     ret |= touch_ft6236_i2c_write(tp, FT6236_THGROUP, 70);
-
-    // valid touching peak detect threshold
-    /*ret |= touch_ft6236_i2c_write(tp, FT6236_THPEAK, 60);
-
-    // Touch focus threshold
-    ret |= touch_ft6236_i2c_write(tp, FT6236_THCAL, 16);
-
-    // threshold when there is surface water
-    ret |= touch_ft6236_i2c_write(tp, FT6236_THWATER, 60);
-
-    // threshold of temperature compensation
-    ret |= touch_ft6236_i2c_write(tp, FT6236_THTEMP, 10);*/
 
     // Touch difference threshold
     ret |= touch_ft6236_i2c_write(tp, FT6236_THDIFF, 20);
