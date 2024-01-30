@@ -5,6 +5,9 @@
  */
 
 #include <stdio.h>
+
+#include <iostream>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
@@ -33,7 +36,15 @@
 #include "esp_lcd_touch_ft6236.h"
 #endif
 
+#include "lvgl_demo_ui.h"
+
 static const char *TAG = "example";
+
+using namespace std;
+
+using std::cout;
+using std::endl;
+using std::runtime_error;
 
 // Using SPI2 in the example
 #define LCD_HOST    SPI2_HOST
@@ -170,10 +181,10 @@ static void example_lvgl_touch_cb(lv_indev_drv_t * drv, lv_indev_data_t * data)
     uint8_t touchpad_cnt = 0;
 
     /* Read touch controller data */
-    esp_lcd_touch_read_data(drv->user_data);
+    esp_lcd_touch_read_data((esp_lcd_touch_handle_t)drv->user_data);
 
     /* Get coordinates */
-    bool touchpad_pressed = esp_lcd_touch_get_coordinates(drv->user_data, touchpad_x, touchpad_y, touchpad_strength, &touchpad_cnt, ARRAY_SIZE(touchpad_x));
+    bool touchpad_pressed = esp_lcd_touch_get_coordinates((esp_lcd_touch_handle_t)drv->user_data, touchpad_x, touchpad_y, touchpad_strength, &touchpad_cnt, ARRAY_SIZE(touchpad_x));
 
     if (touchpad_pressed && touchpad_cnt > 0) {
         data->point.x = touchpad_x[0];
@@ -209,50 +220,71 @@ static esp_err_t i2c_master_init(void)
         .scl_io_num = I2C_MASTER_SCL_IO,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = I2C_MASTER_FREQ_HZ,
+        .master = {.clk_speed = I2C_MASTER_FREQ_HZ},
+        .clk_flags = 0
     };
 
-    i2c_param_config(i2c_master_port, &conf);
+    i2c_param_config((i2c_port_t)i2c_master_port, &conf);
 
-    return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+    return i2c_driver_install((i2c_port_t)i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
 
-void app_main(void)
+extern "C" void app_main(void)
 {
     static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
     static lv_disp_drv_t disp_drv;      // contains callback functions
 
     ESP_LOGI(TAG, "Turn off LCD backlight");
     gpio_config_t bk_gpio_config = {
+        .pin_bit_mask = 1ULL << EXAMPLE_PIN_NUM_BK_LIGHT,
         .mode = GPIO_MODE_OUTPUT,
-        .pin_bit_mask = 1ULL << EXAMPLE_PIN_NUM_BK_LIGHT
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
 
     ESP_LOGI(TAG, "Initialize SPI bus");
-    spi_bus_config_t buscfg = {
-        .sclk_io_num = EXAMPLE_PIN_NUM_SCLK,
+    spi_bus_config_t buscfg =
+    {
         .mosi_io_num = EXAMPLE_PIN_NUM_MOSI,
         .miso_io_num = EXAMPLE_PIN_NUM_MISO,
+        .sclk_io_num = EXAMPLE_PIN_NUM_SCLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
+        .data4_io_num = -1,
+        .data5_io_num = -1,
+        .data6_io_num = -1,
+        .data7_io_num = -1,
         .max_transfer_sz = EXAMPLE_LCD_H_RES * 80 * sizeof(uint16_t),
+        .flags = 0,
+        .isr_cpu_id = INTR_CPU_ID_AUTO,
+        .intr_flags = 0
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
     ESP_LOGI(TAG, "Install panel IO");
     esp_lcd_panel_io_handle_t io_handle = NULL;
-    esp_lcd_panel_io_spi_config_t io_config = {
-        .dc_gpio_num = EXAMPLE_PIN_NUM_LCD_DC,
+    esp_lcd_panel_io_spi_config_t io_config =
+    {
         .cs_gpio_num = EXAMPLE_PIN_NUM_LCD_CS,
-        .pclk_hz = EXAMPLE_LCD_PIXEL_CLOCK_HZ,
-        .lcd_cmd_bits = EXAMPLE_LCD_CMD_BITS,
-        .lcd_param_bits = EXAMPLE_LCD_PARAM_BITS,
+        .dc_gpio_num = EXAMPLE_PIN_NUM_LCD_DC,
         .spi_mode = 0,
+        .pclk_hz = EXAMPLE_LCD_PIXEL_CLOCK_HZ,
         .trans_queue_depth = 10,
         .on_color_trans_done = example_notify_lvgl_flush_ready,
         .user_ctx = &disp_drv,
+        .lcd_cmd_bits = EXAMPLE_LCD_CMD_BITS,
+        .lcd_param_bits = EXAMPLE_LCD_PARAM_BITS,
+        .flags =
+        {
+            .dc_low_on_data = 0,
+            .octal_mode = 0,
+            .sio_mode = 0,
+            .lsb_first = 0,
+            .cs_high_active = 0
+        }
     };
     // Attach the LCD to the SPI bus
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
@@ -262,6 +294,11 @@ void app_main(void)
         .reset_gpio_num = EXAMPLE_PIN_NUM_LCD_RST,
         .rgb_endian = LCD_RGB_ENDIAN_BGR,
         .bits_per_pixel = 16,
+        .flags =
+        {
+            .reset_active_high = 0
+        },
+        .vendor_config = NULL
     };
 #if CONFIG_EXAMPLE_LCD_CONTROLLER_ILI9341
     ESP_LOGI(TAG, "Install ILI9341 panel driver");
@@ -287,18 +324,20 @@ void app_main(void)
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = EXAMPLE_LCD_H_RES,
         .y_max = EXAMPLE_LCD_V_RES,
+        .rst_gpio_num = (gpio_num_t)TOUCH_RES_IO,
+        .int_gpio_num = (gpio_num_t)TOUCH_INT_IO,
         .levels = {
             .reset = 0,
             .interrupt = 0
         },
-        .rst_gpio_num = TOUCH_RES_IO,
-        .int_gpio_num = TOUCH_INT_IO,
         .flags = {
             .swap_xy = 0,
             .mirror_x = 0,
             .mirror_y = 0,
         },
-        .interrupt_callback = tp_interrupt_handler
+        .process_coordinates = NULL,
+        .interrupt_callback = tp_interrupt_handler,
+        .user_data = NULL
     };
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610
@@ -324,15 +363,15 @@ void app_main(void)
 #endif // CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
 
     ESP_LOGI(TAG, "Turn on LCD backlight");
-    gpio_set_level(EXAMPLE_PIN_NUM_BK_LIGHT, EXAMPLE_LCD_BK_LIGHT_ON_LEVEL);
+    gpio_set_level((gpio_num_t)EXAMPLE_PIN_NUM_BK_LIGHT, EXAMPLE_LCD_BK_LIGHT_ON_LEVEL);
 
     ESP_LOGI(TAG, "Initialize LVGL library");
     lv_init();
     // alloc draw buffers used by LVGL
     // it's recommended to choose the size of the draw buffer(s) to be at least 1/10 screen sized
-    lv_color_t *buf1 = heap_caps_malloc(EXAMPLE_LCD_H_RES * 20 * sizeof(lv_color_t), MALLOC_CAP_DMA);
+    lv_color_t *buf1 = (lv_color_t *)heap_caps_malloc(EXAMPLE_LCD_H_RES * 20 * sizeof(lv_color_t), MALLOC_CAP_DMA);
     assert(buf1);
-    lv_color_t *buf2 = heap_caps_malloc(EXAMPLE_LCD_H_RES * 20 * sizeof(lv_color_t), MALLOC_CAP_DMA);
+    lv_color_t *buf2 = (lv_color_t *)heap_caps_malloc(EXAMPLE_LCD_H_RES * 20 * sizeof(lv_color_t), MALLOC_CAP_DMA);
     assert(buf2);
     // initialize LVGL draw buffers
     lv_disp_draw_buf_init(&disp_buf, buf1, buf2, EXAMPLE_LCD_H_RES * 20);
@@ -349,9 +388,13 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Install LVGL tick timer");
     // Tick interface for LVGL (using esp_timer to generate 2ms periodic event)
-    const esp_timer_create_args_t lvgl_tick_timer_args = {
+    const esp_timer_create_args_t lvgl_tick_timer_args =
+    {
         .callback = &example_increase_lvgl_tick,
-        .name = "lvgl_tick"
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "lvgl_tick",
+        .skip_unhandled_events = false
     };
     esp_timer_handle_t lvgl_tick_timer = NULL;
     ESP_ERROR_CHECK(esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer));
