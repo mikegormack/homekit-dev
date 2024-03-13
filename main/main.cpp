@@ -8,6 +8,10 @@
 
 #include <iostream>
 
+#include <hap.h>
+#include <hap_apple_servs.h>
+#include <hap_apple_chars.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
@@ -95,6 +99,12 @@ using std::runtime_error;
 #if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
 esp_lcd_touch_handle_t tp = NULL;
 #endif
+
+
+#define VALVE_TASK_PRIORITY  1
+#define VALVE_TASK_STACKSIZE 4 * 1024
+#define VALVE_TASK_NAME      "hap_valve"
+
 
 extern void example_lvgl_demo_ui(lv_disp_t *disp);
 
@@ -227,6 +237,23 @@ static esp_err_t i2c_master_init(void)
     i2c_param_config((i2c_port_t)i2c_master_port, &conf);
 
     return i2c_driver_install((i2c_port_t)i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+}
+
+static void valve_thread_entry(void *p)
+{
+	hap_acc_t *accessory;
+    hap_serv_t *service;
+
+    /* Configure HomeKit core to make the Accessory name (and thus the WAC SSID) unique,
+     * instead of the default configuration wherein only the WAC SSID is made unique.
+     */
+    hap_cfg_t hap_cfg;
+    hap_get_config(&hap_cfg);
+    hap_cfg.unique_param = UNIQUE_NAME;
+    hap_set_config(&hap_cfg);
+
+    /* Initialize the HAP core */
+    hap_init(HAP_TRANSPORT_WIFI);
 }
 
 
@@ -410,6 +437,8 @@ extern "C" void app_main(void)
 
     lv_indev_drv_register(&indev_drv);
 #endif
+
+	xTaskCreate(valve_thread_entry, VALVE_TASK_NAME, VALVE_TASK_STACKSIZE, NULL, VALVE_TASK_PRIORITY, NULL);
 
     ESP_LOGI(TAG, "Display LVGL Meter Widget");
     example_lvgl_demo_ui(disp);

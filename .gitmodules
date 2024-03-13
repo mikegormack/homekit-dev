@@ -1,3 +1,6 @@
 [submodule "components/esp_lcd_touch_ft6236"]
 	path = components/esp_lcd_touch_ft6236
 	url = git@github.com:mikegormack/esp_lcd_touch_ft6236.git
+[submodule "esp-homekit-sdk"]
+	path = esp-homekit-sdk
+	url = https://github.com/espressif/esp-homekit-sdk.git
